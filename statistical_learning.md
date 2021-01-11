@@ -109,3 +109,151 @@ lasso_fit %>% broom::tidy()
     ## 10 mracepuerto rican     1  -145.      12.6     0.627
     ## 11 smoken                1    -2.62    12.6     0.627
     ## 12 wtgain                1     2.32    12.6     0.627
+
+## K means clustering
+
+### Clustering: pokemon
+
+``` r
+poke_df = 
+  read_csv("./data/pokemon.csv") %>% 
+  janitor::clean_names() %>% 
+  select(hp, speed)
+```
+
+    ## Parsed with column specification:
+    ## cols(
+    ##   `#` = col_double(),
+    ##   Name = col_character(),
+    ##   `Type 1` = col_character(),
+    ##   `Type 2` = col_character(),
+    ##   Total = col_double(),
+    ##   HP = col_double(),
+    ##   Attack = col_double(),
+    ##   Defense = col_double(),
+    ##   `Sp. Atk` = col_double(),
+    ##   `Sp. Def` = col_double(),
+    ##   Speed = col_double(),
+    ##   Generation = col_double(),
+    ##   Legendary = col_logical()
+    ## )
+
+``` r
+poke_df %>% 
+  ggplot(aes(x = hp, y = speed)) +
+  geom_point()
+```
+
+<img src="statistical_learning_files/figure-gfm/unnamed-chunk-7-1.png" width="90%" />
+
+``` r
+kmeans_fit = 
+  kmeans(x = poke_df, centers = 3)
+```
+
+``` r
+poke_df = 
+  broom::augment(kmeans_fit, poke_df)
+
+poke_df %>% 
+  ggplot(aes(x = hp, y = speed, color = .cluster)) +
+  geom_point()
+```
+
+<img src="statistical_learning_files/figure-gfm/unnamed-chunk-9-1.png" width="90%" />
+
+``` r
+clusts = 
+  tibble(k = 2:4) %>% 
+  mutate(
+    km_fit = map(k, ~kmeans(poke_df, .x)),
+    augmented = map(km_fit, ~broom::augment(.x,poke_df))
+  )
+
+clusts %>% 
+  select(-km_fit) %>% 
+  unnest(augmented) %>% 
+  ggplot(aes(hp, speed, color = .cluster)) +
+  geom_point(aes(color = .cluster)) +
+  facet_grid(~k)
+```
+
+<img src="statistical_learning_files/figure-gfm/unnamed-chunk-10-1.png" width="90%" />
+
+### Clustering: trajectories
+
+``` r
+traj_data = 
+  read_csv("./data/trajectories.csv")
+```
+
+    ## Parsed with column specification:
+    ## cols(
+    ##   subj = col_double(),
+    ##   week = col_double(),
+    ##   value = col_double()
+    ## )
+
+``` r
+traj_data %>% 
+  ggplot(aes(x = week, y = value, group = subj)) + 
+  geom_point() + 
+  geom_path()
+```
+
+<img src="statistical_learning_files/figure-gfm/unnamed-chunk-11-1.png" width="90%" />
+
+``` r
+int_slope_df = 
+  traj_data %>% 
+  nest(data = week:value) %>% 
+  mutate(
+    models = map(data, ~lm(value ~ week, data = .x)),
+    result = map(models, broom::tidy)
+  ) %>% 
+  select(subj, result) %>% 
+  unnest(result) %>% 
+  select(subj, term, estimate) %>% 
+  pivot_wider(
+    names_from = term,
+    values_from = estimate
+  ) %>% 
+  rename(int = "(Intercept)", slope = week)
+```
+
+``` r
+int_slope_df %>% 
+  ggplot(aes(x = int, y = slope)) + 
+  geom_point()
+```
+
+<img src="statistical_learning_files/figure-gfm/unnamed-chunk-13-1.png" width="90%" />
+
+``` r
+km_fit = 
+  kmeans(
+    x = int_slope_df %>% select(-subj) %>% scale, 
+    centers = 2)
+
+int_slope_df =
+  broom::augment(km_fit, int_slope_df)
+```
+
+``` r
+int_slope_df %>% 
+  ggplot(aes(x = int, y = slope, color = .cluster)) +
+  geom_point()
+```
+
+<img src="statistical_learning_files/figure-gfm/unnamed-chunk-15-1.png" width="90%" />
+
+``` r
+left_join(traj_data, int_slope_df) %>% 
+  ggplot(aes(x = week, y = value, group = subj, color = .cluster)) + 
+  geom_point() + 
+  geom_path() 
+```
+
+    ## Joining, by = "subj"
+
+<img src="statistical_learning_files/figure-gfm/unnamed-chunk-16-1.png" width="90%" />
